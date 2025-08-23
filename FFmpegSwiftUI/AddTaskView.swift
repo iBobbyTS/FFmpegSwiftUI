@@ -228,11 +228,11 @@ struct AddTaskView: View {
                     HStack(spacing: 20) {
                         // 输入文件名
                         VStack(alignment: .leading) {
-                            Text("输入文件名")
+                            Text("输入文件路径")
                                 .font(.subheadline)
                                 .fontWeight(.medium)
                             
-                            TextField("自动填入", text: $inputFileName)
+                            TextField("自动填入", text: $inputFile)
                                 .textFieldStyle(.roundedBorder)
                                 .onChange(of: inputFile) { newValue in
                                     print("🔄 [DEBUG] inputFile 发生变化: \(newValue)")
@@ -246,12 +246,13 @@ struct AddTaskView: View {
                         
                         // 输出文件名
                         VStack(alignment: .leading) {
-                            Text("输出文件名")
+                            Text("输出文件路径")
                                 .font(.subheadline)
                                 .fontWeight(.medium)
                             
-                            TextField("自动生成", text: $outputFileName)
+                            TextField("自动生成", text: .constant(getFullOutputPath()))
                                 .textFieldStyle(.roundedBorder)
+                                .disabled(true)
                                 .onChange(of: inputFileName) { newValue in
                                     if !newValue.isEmpty && !outputFile.isEmpty {
                                         let inputDir = URL(fileURLWithPath: inputFile).deletingLastPathComponent()
@@ -541,15 +542,17 @@ struct AddTaskView: View {
                 }
                 
                 if !inputFile.isEmpty {
-                    Text("输入: \(inputFile)")
+                    Text("输入路径: \(inputFile)")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                        .lineLimit(2)
                 }
                 
                 if !outputFile.isEmpty {
-                    Text("输出: \(outputFile)")
+                    Text("输出路径: \(outputFile)")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                        .lineLimit(2)
                 }
                 
                 HStack {
@@ -577,6 +580,14 @@ struct AddTaskView: View {
     }
     
     // MARK: - 辅助方法
+    
+    // 获取完整的输出文件路径
+    private func getFullOutputPath() -> String {
+        if outputFile.isEmpty || outputFileName.isEmpty {
+            return "未选择输出路径"
+        }
+        return "\(outputFile)/\(outputFileName)"
+    }
     
     // 使用原生 NSOpenPanel 选择文件
     private func openFileSelector() {
