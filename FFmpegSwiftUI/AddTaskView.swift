@@ -306,27 +306,6 @@ struct AddTaskView: View {
                         .pickerStyle(.menu)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    
-                    // 视频/音频选择
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("输出内容")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        
-                        HStack {
-                            Checkbox(isChecked: includeVideo) {
-                                includeVideo.toggle()
-                            }
-                            Text("视频")
-                            
-                            Spacer()
-                            
-                            Checkbox(isChecked: includeAudio) {
-                                includeAudio.toggle()
-                            }
-                            Text("音频")
-                        }
-                    }
                 }
             }
             .padding()
@@ -338,6 +317,24 @@ struct AddTaskView: View {
                 Text("输出设置")
                     .font(.headline)
                 
+                // 视频/音频选择
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("输出轨道")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    
+                    HStack {
+                        Checkbox(isChecked: includeVideo) {
+                            includeVideo.toggle()
+                        }
+                        Text("视频")
+                        
+                        Checkbox(isChecked: includeAudio) {
+                            includeAudio.toggle()
+                        }
+                        Text("音频")
+                    }
+                }
                 VStack(alignment: .leading, spacing: 15) {
                     // 扩展名选择
                     HStack {
