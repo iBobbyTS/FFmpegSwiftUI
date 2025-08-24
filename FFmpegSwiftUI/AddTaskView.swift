@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Foundation
 
 struct AddTaskView: View {
     @State private var isSimpleMode = true
@@ -12,6 +13,8 @@ struct AddTaskView: View {
     // 新增状态变量
     @State private var inputFileName = ""
     @State private var outputFileName = ""
+    @State private var outputFullPath = ""
+    @State private var isOutputFileNameManuallySet = false
     @State private var selectedFrameRate = "source"
     @State private var includeVideo = true
     @State private var includeAudio = true
@@ -97,10 +100,10 @@ struct AddTaskView: View {
                         Text("FFmpeg命令")
                             .font(.headline)
                         
-                                            TextField("完整的ffmpeg命令", text: .constant(ffmpegCommand), axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(3...6)
-                        .onAppear { updateFFmpegCommand() }
+                        TextField("完整的ffmpeg命令", text: .constant(ffmpegCommand), axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .lineLimit(3...6)
+                            .onAppear { updateFFmpegCommand() }
                     }
                     .padding(.horizontal)
                     
@@ -123,11 +126,10 @@ struct AddTaskView: View {
                 print("🚀 [DEBUG] 初始状态 - inputFile: '\(inputFile)'")
                 print("🚀 [DEBUG] 初始状态 - outputFile: '\(outputFile)'")
             }
-            .onChange(of: showingOutputPicker) { oldValue, newValue in
-                print("🔄 [DEBUG] showingOutputPicker 变化: \(oldValue) -> \(newValue)")
+            .onChange(of: showingOutputPicker) { _, _ in
+                print("🔄 [DEBUG] showingOutputPicker 变化")
             }
         }
-
         .fileImporter(
             isPresented: $showingOutputPicker,
             allowedContentTypes: [.folder],
@@ -141,6 +143,8 @@ struct AddTaskView: View {
                     print("📁 [DEBUG] 选择的文件夹: \(file.path)")
                     outputFile = file.path
                     print("📁 [DEBUG] outputFile 已设置为: \(outputFile)")
+                    // 选择输出文件夹后立即计算输出文件名
+                    calculateOutputFileName()
                 } else {
                     print("❌ [DEBUG] 文件夹列表为空")
                 }
@@ -224,52 +228,59 @@ struct AddTaskView: View {
                         }
                     }
                     
-                    // 第二行：文件名输入框
-                    HStack(spacing: 20) {
-                        // 输入文件名
-                        VStack(alignment: .leading) {
-                            Text("输入文件路径")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            
-                            TextField("自动填入", text: $inputFile)
-                                .textFieldStyle(.roundedBorder)
-                                .onChange(of: inputFile) { newValue in
-                                    print("🔄 [DEBUG] inputFile 发生变化: \(newValue)")
-                                    if !newValue.isEmpty {
-                                        let fileName = URL(fileURLWithPath: newValue).lastPathComponent
-                                        inputFileName = fileName
-                                        print("🔄 [DEBUG] inputFileName 已更新为: \(fileName)")
-                                    }
-                                }
-                        }
-                        
-                        // 输出文件名
-                        VStack(alignment: .leading) {
-                            Text("输出文件路径")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            
-                            TextField("自动生成", text: .constant(getFullOutputPath()))
-                                .textFieldStyle(.roundedBorder)
-                                .disabled(true)
-                                .onChange(of: inputFileName) { newValue in
-                                    if !newValue.isEmpty && !outputFile.isEmpty {
-                                        let inputDir = URL(fileURLWithPath: inputFile).deletingLastPathComponent()
-                                        let outputDir = URL(fileURLWithPath: outputFile)
-                                        
-                                        if inputDir.path == outputDir.path {
-                                            // 同一目录，添加"_已转换"后缀
-                                            let nameWithoutExt = URL(fileURLWithPath: newValue).deletingPathExtension().lastPathComponent
-                                            outputFileName = "\(nameWithoutExt)_已转换.\(selectedExtension)"
-                                        } else {
-                                            // 不同目录，保持原文件名
-                                            outputFileName = newValue
-                                        }
-                                    }
-                                }
-                        }
-                    }
+                                         // 第二行：路径输入框
+                     HStack(spacing: 20) {
+                         // 输入文件路径
+                         VStack(alignment: .leading) {
+                             Text("输入文件路径")
+                                 .font(.subheadline)
+                                 .fontWeight(.medium)
+                             
+                             TextField("自动填入", text: $inputFile)
+                                 .textFieldStyle(.roundedBorder)
+                                 .onChange(of: inputFile) { _, _ in
+                                     print("🔄 [DEBUG] inputFile 发生变化: \(inputFile)")
+                                     if !inputFile.isEmpty {
+                                         let fileName = URL(fileURLWithPath: inputFile).lastPathComponent
+                                         inputFileName = fileName
+                                         print("🔄 [DEBUG] inputFileName 已更新为: \(fileName)")
+                                         // 输入文件变化后重新计算输出文件名
+                                         calculateOutputFileName()
+                                     }
+                                 }
+                         }
+                         
+                         // 输出文件路径
+                         VStack(alignment: .leading) {
+                             Text("输出文件路径")
+                                 .font(.subheadline)
+                                 .fontWeight(.medium)
+                             
+                             TextField("自动生成", text: $outputFullPath)
+                                 .textFieldStyle(.roundedBorder)
+                                 .onChange(of: outputFullPath) { oldValue, newValue in
+                                     // 如果用户手动修改了完整路径，标记为手动设置
+                                     if !oldValue.isEmpty && !newValue.isEmpty && oldValue != newValue {
+                                         isOutputFileNameManuallySet = true
+                                         print("🖊️ [DEBUG] 用户手动修改输出路径: \(newValue)")
+                                         
+                                         // 从完整路径中提取文件夹和文件名
+                                         let url = URL(fileURLWithPath: newValue)
+                                         outputFile = url.deletingLastPathComponent().path
+                                         outputFileName = url.lastPathComponent
+                                     }
+                                 }
+                                 .onChange(of: outputFile) { _, _ in
+                                     calculateOutputFileName()
+                                 }
+                                 .onChange(of: inputFileName) { _, _ in
+                                     calculateOutputFileName()
+                                 }
+                                 .onChange(of: selectedExtension) { _, _ in
+                                     calculateOutputFileName()
+                                 }
+                         }
+                     }
                 }
             }
             .padding()
@@ -341,7 +352,7 @@ struct AddTaskView: View {
                         }
                         .pickerStyle(.menu)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .onChange(of: includeVideo) { _ in
+                        .onChange(of: includeVideo) { _, _ in
                             // 当切换视频/音频时，自动切换到合适的扩展名
                             let newExtensions = includeVideo ? FFmpegConfig.videoExtensions : FFmpegConfig.audioExtensions
                             if !newExtensions.contains(selectedExtension) {
@@ -349,7 +360,7 @@ struct AddTaskView: View {
                             }
                             updateCodecForExtension()
                         }
-                        .onChange(of: selectedExtension) { _ in
+                        .onChange(of: selectedExtension) { _, _ in
                             updateCodecForExtension()
                         }
                     }
@@ -359,85 +370,147 @@ struct AddTaskView: View {
             .background(Color(NSColor.controlBackgroundColor))
             .cornerRadius(10)
                 
-                // 视频编码配置容器
-                if includeVideo {
-                    VStack(spacing: 15) {
-                        Text("视频编码配置")
-                            .font(.headline)
+            // 视频编码配置容器
+            if includeVideo {
+                VStack(spacing: 15) {
+                    Text("视频编码配置")
+                        .font(.headline)
+                    
+                    VStack(alignment: .leading, spacing: 10) {
+                        // 视频编码
+                        HStack {
+                            Text("视频编码:")
+                                .frame(minWidth: 80, alignment: .leading)
+                            
+                            Picker("", selection: $selectedVideoCodec) {
+                                let supportedCodecs = FFmpegConfig.getSupportedVideoCodecs(for: selectedExtension)
+                                ForEach(supportedCodecs, id: \.self) { codec in
+                                    Text(FFmpegConfig.videoCodecs[codec]?.displayName ?? codec).tag(codec)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .onChange(of: selectedVideoCodec) { _, _ in
+                                updateEncoderForCodec()
+                            }
+                        }
                         
-                        VStack(alignment: .leading, spacing: 10) {
-                            // 视频编码
-                            HStack {
-                                Text("视频编码:")
-                                    .frame(minWidth: 80, alignment: .leading)
-                                
-                                Picker("", selection: $selectedVideoCodec) {
-                                    let supportedCodecs = FFmpegConfig.getSupportedVideoCodecs(for: selectedExtension)
-                                    ForEach(supportedCodecs, id: \.self) { codec in
-                                        Text(FFmpegConfig.videoCodecs[codec]?.displayName ?? codec).tag(codec)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .onChange(of: selectedVideoCodec) { _ in
-                                    updateEncoderForCodec()
+                        // 编码器
+                        HStack {
+                            Text("编码器:")
+                                .frame(minWidth: 80, alignment: .leading)
+                            
+                            Picker("", selection: $selectedVideoEncoder) {
+                                let encoders = FFmpegConfig.getEncoders(for: selectedVideoCodec)
+                                ForEach(encoders, id: \.self) { encoder in
+                                    Text(encoder).tag(encoder)
                                 }
                             }
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        
+                        // 预设
+                        HStack {
+                            Text("预设:")
+                                .frame(minWidth: 80, alignment: .leading)
                             
-                            // 编码器
-                            HStack {
-                                Text("编码器:")
-                                    .frame(minWidth: 80, alignment: .leading)
-                                
-                                Picker("", selection: $selectedVideoEncoder) {
-                                    let encoders = FFmpegConfig.getEncoders(for: selectedVideoCodec)
-                                    ForEach(encoders, id: \.self) { encoder in
-                                        Text(encoder).tag(encoder)
-                                    }
+                            Picker("", selection: $selectedPreset) {
+                                let presets = FFmpegConfig.getPresets(for: selectedVideoCodec)
+                                ForEach(presets, id: \.self) { preset in
+                                    Text(preset).tag(preset)
                                 }
-                                .pickerStyle(.menu)
-                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        
+                        // 调优
+                        HStack {
+                            Text("调优:")
+                                .frame(minWidth: 80, alignment: .leading)
                             
-                            // 预设
-                            HStack {
-                                Text("预设:")
-                                    .frame(minWidth: 80, alignment: .leading)
-                                
-                                Picker("", selection: $selectedPreset) {
-                                    let presets = FFmpegConfig.getPresets(for: selectedVideoCodec)
-                                    ForEach(presets, id: \.self) { preset in
-                                        Text(preset).tag(preset)
-                                    }
+                            Picker("", selection: $selectedTune) {
+                                let tunes = FFmpegConfig.getTunes(for: selectedVideoCodec)
+                                ForEach(tunes, id: \.self) { tune in
+                                    Text(tune).tag(tune)
                                 }
-                                .pickerStyle(.menu)
-                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        
+                        // 码率控制
+                        HStack {
+                            Text("码率控制:")
+                                .frame(minWidth: 80, alignment: .leading)
                             
-                            // 调优
-                            HStack {
-                                Text("调优:")
-                                    .frame(minWidth: 80, alignment: .leading)
-                                
-                                Picker("", selection: $selectedTune) {
-                                    let tunes = FFmpegConfig.getTunes(for: selectedVideoCodec)
-                                    ForEach(tunes, id: \.self) { tune in
-                                        Text(tune).tag(tune)
-                                    }
+                            Picker("", selection: $selectedRateControl) {
+                                let rateControls = FFmpegConfig.getRateControls(for: selectedVideoCodec)
+                                ForEach(rateControls, id: \.self) { rateControl in
+                                    Text(rateControl).tag(rateControl)
                                 }
-                                .pickerStyle(.menu)
-                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                .padding()
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(10)
+            }
+            
+            // 音频编码配置容器
+            if includeAudio {
+                VStack(spacing: 15) {
+                    Text("音频编码配置")
+                        .font(.headline)
+                    
+                    VStack(alignment: .leading, spacing: 10) {
+                        // 音频编码
+                        HStack {
+                            Text("音频编码:")
+                                .frame(minWidth: 80, alignment: .leading)
                             
-                            // 码率控制
+                            Picker("", selection: $selectedAudioCodec) {
+                                let supportedCodecs = FFmpegConfig.getSupportedAudioCodecs(for: selectedExtension)
+                                ForEach(supportedCodecs, id: \.self) { codec in
+                                    Text(FFmpegConfig.audioCodecs[codec]?.displayName ?? codec).tag(codec)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .onChange(of: selectedAudioCodec) { _, _ in
+                                updateAudioEncoderForCodec()
+                            }
+                        }
+                        
+                        // 编码器
+                        HStack {
+                            Text("编码器:")
+                                .frame(minWidth: 80, alignment: .leading)
+                            
+                            Picker("", selection: $selectedAudioEncoder) {
+                                let encoders = FFmpegConfig.getAudioEncoders(for: selectedAudioCodec)
+                                ForEach(encoders, id: \.self) { encoder in
+                                    Text(encoder).tag(encoder)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        
+                        // 码率
+                        let bitrates = FFmpegConfig.getBitrates(for: selectedAudioCodec)
+                        if !bitrates.isEmpty {
                             HStack {
-                                Text("码率控制:")
+                                Text("码率:")
                                     .frame(minWidth: 80, alignment: .leading)
                                 
-                                Picker("", selection: $selectedRateControl) {
-                                    let rateControls = FFmpegConfig.getRateControls(for: selectedVideoCodec)
-                                    ForEach(rateControls, id: \.self) { rateControl in
-                                        Text(rateControl).tag(rateControl)
+                                Picker("", selection: $audioBitrate) {
+                                    ForEach(bitrates, id: \.self) { bitrate in
+                                        Text("\(bitrate) kbps").tag(bitrate)
                                     }
                                 }
                                 .pickerStyle(.menu)
@@ -445,73 +518,11 @@ struct AddTaskView: View {
                             }
                         }
                     }
-                    .padding()
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(10)
                 }
-                
-                // 音频编码配置容器
-                if includeAudio {
-                    VStack(spacing: 15) {
-                        Text("音频编码配置")
-                            .font(.headline)
-                        
-                        VStack(alignment: .leading, spacing: 10) {
-                            // 音频编码
-                            HStack {
-                                Text("音频编码:")
-                                    .frame(minWidth: 80, alignment: .leading)
-                                
-                                Picker("", selection: $selectedAudioCodec) {
-                                    let supportedCodecs = FFmpegConfig.getSupportedAudioCodecs(for: selectedExtension)
-                                    ForEach(supportedCodecs, id: \.self) { codec in
-                                        Text(FFmpegConfig.audioCodecs[codec]?.displayName ?? codec).tag(codec)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .onChange(of: selectedAudioCodec) { _ in
-                                    updateAudioEncoderForCodec()
-                                }
-                            }
-                            
-                            // 编码器
-                            HStack {
-                                Text("编码器:")
-                                    .frame(minWidth: 80, alignment: .leading)
-                                
-                                Picker("", selection: $selectedAudioEncoder) {
-                                    let encoders = FFmpegConfig.getAudioEncoders(for: selectedAudioCodec)
-                                    ForEach(encoders, id: \.self) { encoder in
-                                        Text(encoder).tag(encoder)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            
-                            // 码率
-                            let bitrates = FFmpegConfig.getBitrates(for: selectedAudioCodec)
-                            if !bitrates.isEmpty {
-                                HStack {
-                                    Text("码率:")
-                                        .frame(minWidth: 80, alignment: .leading)
-                                    
-                                    Picker("", selection: $audioBitrate) {
-                                        ForEach(bitrates, id: \.self) { bitrate in
-                                            Text("\(bitrate) kbps").tag(bitrate)
-                                        }
-                                    }
-                                    .pickerStyle(.menu)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            }
-                        }
-                    }
-                    .padding()
-                    .background(Color(NSColor.controlBackgroundColor))
-                    .cornerRadius(10)
-                }
+                .padding()
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(10)
+            }
         }
     }
     
@@ -589,6 +600,49 @@ struct AddTaskView: View {
         return "\(outputFile)/\(outputFileName)"
     }
     
+    // 计算输出文件名
+    private func calculateOutputFileName() {
+        guard !inputFile.isEmpty && !outputFile.isEmpty else {
+            outputFileName = ""
+            outputFullPath = ""
+            isOutputFileNameManuallySet = false
+            return
+        }
+        
+        // 如果用户已经手动设置了文件名，只更新扩展名部分
+        if isOutputFileNameManuallySet {
+            let currentName = outputFileName
+            if let dotIndex = currentName.lastIndex(of: ".") {
+                let nameWithoutExt = String(currentName[..<dotIndex])
+                outputFileName = "\(nameWithoutExt).\(selectedExtension)"
+                print("🔄 [DEBUG] 保留用户文件名，只更新扩展名: \(outputFileName)")
+            }
+            outputFullPath = "\(outputFile)/\(outputFileName)"
+            return
+        }
+        
+        let inputDir = URL(fileURLWithPath: inputFile).deletingLastPathComponent()
+        let outputDir = URL(fileURLWithPath: outputFile)
+        
+        if inputDir.path == outputDir.path {
+            // 同一目录，添加"_已转换"后缀
+            let nameWithoutExt = URL(fileURLWithPath: inputFile).deletingPathExtension().lastPathComponent
+            outputFileName = "\(nameWithoutExt)_已转换.\(selectedExtension)"
+        } else {
+            // 不同目录，保持原文件名
+            let inputFileName = URL(fileURLWithPath: inputFile).lastPathComponent
+            let nameWithoutExt = URL(fileURLWithPath: inputFileName).deletingPathExtension().lastPathComponent
+            outputFileName = "\(nameWithoutExt).\(selectedExtension)"
+        }
+        
+        outputFullPath = "\(outputFile)/\(outputFileName)"
+        print("🔄 [DEBUG] 自动计算输出文件名: \(outputFileName)")
+        print("🔄 [DEBUG] 输出完整路径: \(outputFullPath)")
+        print("🔄 [DEBUG] 输入目录: \(inputDir.path)")
+        print("🔄 [DEBUG] 输出目录: \(outputDir.path)")
+        print("🔄 [DEBUG] 是否同一目录: \(inputDir.path == outputDir.path)")
+    }
+    
     // 使用原生 NSOpenPanel 选择文件
     private func openFileSelector() {
         print("🔄 [DEBUG] 使用 NSOpenPanel 打开文件选择器")
@@ -607,6 +661,8 @@ struct AddTaskView: View {
                     self.inputFileName = url.lastPathComponent
                     print("🔄 [DEBUG] inputFile 已更新为: \(url.path)")
                     print("🔄 [DEBUG] inputFileName 已更新为: \(url.lastPathComponent)")
+                    // 选择输入文件后立即计算输出文件名
+                    self.calculateOutputFileName()
                 } else {
                     print("❌ [DEBUG] NSOpenPanel 文件选择被取消")
                 }
@@ -766,6 +822,8 @@ struct AddTaskView: View {
         filterParameters = ""
         self.inputFileName = ""
         self.outputFileName = ""
+        self.outputFullPath = ""
+        self.isOutputFileNameManuallySet = false
     }
     
     private func buildFFmpegParameters() -> String {
